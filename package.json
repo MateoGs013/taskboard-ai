@@ -1,0 +1,22 @@
+{
+  "name": "taskboard-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TaskBoard AI — project management with local LLM assistance",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "dev:api": "npm run dev -w backend",
+    "dev:web": "npm run dev -w frontend",
+    "db:up": "docker compose up -d postgres redis",
+    "db:down": "docker compose down",
+    "db:migrate": "npm run db:migrate -w backend",
+    "db:reset": "docker compose down -v && docker compose up -d postgres redis && sleep 3 && npm run db:migrate"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}
