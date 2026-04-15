@@ -303,6 +303,100 @@ export async function createComment({ issueId, userId, body, parentId }) {
 // LABELS ON ISSUE
 // ============================================================
 
+// ============================================================
+// SUB-ISSUES (parent-child)
+// ============================================================
+
+export async function listSubIssues({ issueId, userId }) {
+  const parent = await getIssue({ issueId, userId });
+  if (!parent) throw Object.assign(new Error('Issue not found'), { statusCode: 404 });
+  const { rows } = await query(
+    `SELECT ${SELECT_ISSUE}
+     ${FROM_ISSUE}
+     WHERE i.parent_id = $1
+     GROUP BY i.id, u_assignee.id, u_reporter.id
+     ORDER BY i.created_at ASC`,
+    [issueId]
+  );
+  return rows;
+}
+
+// ============================================================
+// RELATIONS
+// ============================================================
+
+const REVERSE = {
+  blocks: 'blocked_by',
+  blocked_by: 'blocks',
+  relates_to: 'relates_to',
+  duplicate_of: 'duplicate_of',
+};
+
+export async function listRelations({ issueId, userId }) {
+  const issue = await getIssue({ issueId, userId });
+  if (!issue) throw Object.assign(new Error('Issue not found'), { statusCode: 404 });
+  const { rows } = await query(
+    `SELECT r.id, r.type, r.created_at,
+            r.related_issue_id,
+            ri.identifier AS related_identifier,
+            ri.title AS related_title,
+            ri.status_id AS related_status_id
+     FROM issue_relations r
+     JOIN issues ri ON ri.id = r.related_issue_id
+     WHERE r.issue_id = $1
+     ORDER BY r.created_at ASC`,
+    [issueId]
+  );
+  return rows;
+}
+
+export async function addRelation({ issueId, userId, relatedIssueId, type }) {
+  const [issue, related] = await Promise.all([
+    getIssue({ issueId, userId }),
+    getIssue({ issueId: relatedIssueId, userId }),
+  ]);
+  if (!issue || !related) throw Object.assign(new Error('Issue not found'), { statusCode: 404 });
+  if (issueId === relatedIssueId) throw Object.assign(new Error('Cannot relate issue to itself'), { statusCode: 400 });
+
+  return withTransaction(async (client) => {
+    await client.query(
+      `INSERT INTO issue_relations (issue_id, related_issue_id, type)
+       VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+      [issueId, relatedIssueId, type]
+    );
+    const reverse = REVERSE[type];
+    if (reverse) {
+      await client.query(
+        `INSERT INTO issue_relations (issue_id, related_issue_id, type)
+         VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+        [relatedIssueId, issueId, reverse]
+      );
+    }
+  });
+}
+
+export async function removeRelation({ relationId, userId }) {
+  const { rows } = await query(
+    `SELECT issue_id, related_issue_id, type FROM issue_relations WHERE id = $1`,
+    [relationId]
+  );
+  if (!rows.length) throw Object.assign(new Error('Relation not found'), { statusCode: 404 });
+  const { issue_id, related_issue_id, type } = rows[0];
+  const issue = await getIssue({ issueId: issue_id, userId });
+  if (!issue) throw Object.assign(new Error('Forbidden'), { statusCode: 403 });
+  return withTransaction(async (client) => {
+    await client.query('DELETE FROM issue_relations WHERE id = $1', [relationId]);
+    const reverse = REVERSE[type];
+    if (reverse) {
+      await client.query(
+        `DELETE FROM issue_relations
+         WHERE issue_id = $1 AND related_issue_id = $2 AND type = $3`,
+        [related_issue_id, issue_id, reverse]
+      );
+    }
+  });
+}
+
 export async function setIssueLabels({ issueId, userId, labelIds }) {
   const issue = await getIssue({ issueId, userId });
   if (!issue) throw Object.assign(new Error('Issue not found'), { statusCode: 404 });

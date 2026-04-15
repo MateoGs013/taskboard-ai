@@ -25,6 +25,8 @@ const routes = [
       { path: '', name: 'home', component: () => import('@/views/HomeView.vue') },
       { path: 'board', name: 'board', component: () => import('@/views/board/BoardView.vue') },
       { path: 'board/:teamId', name: 'board-team', component: () => import('@/views/board/BoardView.vue') },
+      { path: 'cycles', name: 'cycles', component: () => import('@/views/cycles/CyclesView.vue') },
+      { path: 'workflow', name: 'workflow', component: () => import('@/views/workflow/WorkflowEditor.vue') },
     ],
   },
   {

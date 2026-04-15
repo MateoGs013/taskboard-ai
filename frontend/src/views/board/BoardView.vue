@@ -4,6 +4,8 @@ import { useRoute } from 'vue-router';
 import { VueDraggable } from 'vue-draggable-plus';
 import { useTeamStore } from '@/stores/team';
 import { useIssueStore } from '@/stores/issue';
+import { useCycleStore } from '@/stores/cycle';
+import { useKeyboard } from '@/composables/useKeyboard';
 import IssueCard from '@/components/issues/IssueCard.vue';
 import IssueDetailPanel from '@/components/issues/IssueDetailPanel.vue';
 import CreateIssueModal from '@/components/issues/CreateIssueModal.vue';
@@ -11,11 +13,22 @@ import CreateIssueModal from '@/components/issues/CreateIssueModal.vue';
 const route = useRoute();
 const teams = useTeamStore();
 const issues = useIssueStore();
+const cycles = useCycleStore();
 
 const showCreate = ref(false);
 const createStatusId = ref(null);
+const filterCycleId = ref('');
 
 const activeTeamId = computed(() => route.params.teamId || teams.activeId);
+
+useKeyboard({
+  c: () => {
+    if (!showCreate.value && !issues.selected) {
+      createStatusId.value = null;
+      showCreate.value = true;
+    }
+  },
+});
 
 async function boot() {
   const teamId = activeTeamId.value;
@@ -31,11 +44,25 @@ async function boot() {
 onMounted(boot);
 watch(activeTeamId, boot);
 
+const filteredIssues = computed(() => {
+  if (!filterCycleId.value) return issues.all;
+  if (filterCycleId.value === 'none') return issues.all.filter((i) => !i.cycle_id);
+  return issues.all.filter((i) => i.cycle_id === filterCycleId.value);
+});
+
 const columns = computed(() => {
-  const byStatus = issues.byStatus;
+  const map = new Map();
+  for (const issue of filteredIssues.value) {
+    const arr = map.get(issue.status_id) || [];
+    arr.push(issue);
+    map.set(issue.status_id, arr);
+  }
+  for (const arr of map.values()) {
+    arr.sort((a, b) => a.sort_order.localeCompare(b.sort_order));
+  }
   return teams.statuses.map((s) => ({
     ...s,
-    issues: byStatus.get(s.id) || [],
+    issues: map.get(s.id) || [],
   }));
 });
 
@@ -74,9 +101,27 @@ async function onDragEnd(evt, targetStatusId) {
     <header class="board__header">
       <div>
         <h1>{{ teams.active?.name || 'Board' }}</h1>
-        <p class="muted small">{{ teams.active?.identifier }} · {{ issues.all.length }} issues</p>
+        <p class="muted small">
+          {{ teams.active?.identifier }} ·
+          {{ filteredIssues.length }} issues visibles
+          <template v-if="filterCycleId"> · filtrando por cycle</template>
+        </p>
       </div>
-      <button class="btn-primary" @click="openCreate(null)">+ Nueva issue</button>
+      <div class="board__actions">
+        <select
+          v-if="cycles.list.length"
+          v-model="filterCycleId"
+          class="cycle-filter"
+          aria-label="Filtrar por cycle"
+        >
+          <option value="">Todos los issues</option>
+          <option value="none">Sin cycle</option>
+          <option v-for="c in cycles.list" :key="c.id" :value="c.id">
+            #{{ c.number }} {{ c.name || '' }} ({{ c.status }})
+          </option>
+        </select>
+        <button class="btn-primary" @click="openCreate(null)">+ Nueva issue <kbd>C</kbd></button>
+      </div>
     </header>
 
     <div class="board__columns" v-if="!issues.loading">

@@ -14,6 +14,20 @@ const editingDesc = ref(false);
 const newComment = ref('');
 const posting = ref(false);
 
+const newSubTitle = ref('');
+const addingSub = ref(false);
+const showRelationForm = ref(false);
+const relationType = ref('blocks');
+const relationTargetIdentifier = ref('');
+const relationError = ref('');
+
+const RELATION_LABELS = {
+  blocks: 'Bloquea',
+  blocked_by: 'Bloqueada por',
+  relates_to: 'Relacionada con',
+  duplicate_of: 'Duplica a',
+};
+
 const issue = computed(() => issues.selected);
 
 watch(issue, (v) => {
@@ -50,6 +64,39 @@ async function changePriority(e) {
 
 async function changeAssignee(e) {
   await issues.update(issue.value.id, { assignee_id: e.target.value || null });
+}
+
+async function addSubIssue() {
+  if (!newSubTitle.value.trim()) return;
+  addingSub.value = true;
+  try {
+    await issues.createSubIssue(issue.value.id, newSubTitle.value.trim());
+    newSubTitle.value = '';
+  } finally {
+    addingSub.value = false;
+  }
+}
+
+async function openSubIssue(subId) {
+  await issues.select(subId);
+}
+
+async function addRelation() {
+  relationError.value = '';
+  const target = issues.all.find(
+    (i) => i.identifier.toLowerCase() === relationTargetIdentifier.value.trim().toLowerCase()
+  );
+  if (!target) {
+    relationError.value = 'No encontré una issue con ese identifier en el team activo.';
+    return;
+  }
+  try {
+    await issues.addRelation(issue.value.id, target.id, relationType.value);
+    relationTargetIdentifier.value = '';
+    showRelationForm.value = false;
+  } catch (e) {
+    relationError.value = e.message || 'No se pudo crear la relación';
+  }
 }
 
 async function postComment() {
@@ -125,6 +172,68 @@ async function postComment() {
           @keyup.escape="editingDesc = false"
           autofocus
         />
+      </section>
+
+      <section class="detail-panel__section">
+        <header class="section-head">
+          <h3>Sub-issues ({{ issues.subIssues.length }})</h3>
+        </header>
+        <ul class="sub-issue-list" v-if="issues.subIssues.length">
+          <li
+            v-for="s in issues.subIssues"
+            :key="s.id"
+            class="sub-issue"
+            @click="openSubIssue(s.id)"
+            tabindex="0"
+            @keyup.enter="openSubIssue(s.id)"
+          >
+            <span class="identifier mono">{{ s.identifier }}</span>
+            <span class="title">{{ s.title }}</span>
+          </li>
+        </ul>
+        <form class="sub-issue-form" @submit.prevent="addSubIssue">
+          <input
+            v-model="newSubTitle"
+            placeholder="Nueva sub-issue…"
+            maxlength="200"
+          />
+          <button type="submit" :disabled="addingSub || !newSubTitle.trim()">
+            {{ addingSub ? '…' : 'Crear' }}
+          </button>
+        </form>
+      </section>
+
+      <section class="detail-panel__section">
+        <header class="section-head">
+          <h3>Relaciones ({{ issues.relations.length }})</h3>
+          <button class="link" @click="showRelationForm = !showRelationForm">
+            {{ showRelationForm ? 'Cancelar' : '+ Añadir' }}
+          </button>
+        </header>
+        <form v-if="showRelationForm" class="relation-form" @submit.prevent="addRelation">
+          <select v-model="relationType">
+            <option value="blocks">Bloquea</option>
+            <option value="blocked_by">Bloqueada por</option>
+            <option value="relates_to">Relacionada con</option>
+            <option value="duplicate_of">Duplica a</option>
+          </select>
+          <input
+            v-model="relationTargetIdentifier"
+            placeholder="Identifier (ej: FE-12)"
+            required
+          />
+          <button type="submit">Añadir</button>
+          <p v-if="relationError" class="modal__error">{{ relationError }}</p>
+        </form>
+        <ul class="relation-list" v-if="issues.relations.length">
+          <li v-for="r in issues.relations" :key="r.id" class="relation-row">
+            <span class="relation-type">{{ RELATION_LABELS[r.type] }}</span>
+            <span class="identifier mono">{{ r.related_identifier }}</span>
+            <span class="title">{{ r.related_title }}</span>
+            <button class="link danger" @click="issues.removeRelation(issue.id, r.id)">×</button>
+          </li>
+        </ul>
+        <p v-else-if="!showRelationForm" class="muted small">Sin relaciones.</p>
       </section>
 
       <section class="detail-panel__comments">

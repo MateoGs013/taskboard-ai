@@ -9,6 +9,10 @@ import {
   listComments,
   createComment,
   setIssueLabels,
+  listSubIssues,
+  listRelations,
+  addRelation,
+  removeRelation,
 } from './issue.service.js';
 import { requireAuth } from '../../middleware/auth.js';
 
@@ -55,6 +59,11 @@ const CommentBody = z.object({
 
 const LabelsBody = z.object({
   label_ids: z.array(z.string().uuid()),
+});
+
+const RelationBody = z.object({
+  related_issue_id: z.string().uuid(),
+  type: z.enum(['blocks', 'blocked_by', 'relates_to', 'duplicate_of']),
 });
 
 export default async function issueRoutes(app) {
@@ -139,5 +148,31 @@ export default async function issueRoutes(app) {
       parentId: body.parent_id,
     });
     reply.code(201).send({ comment });
+  });
+
+  app.get('/:issueId/sub-issues', async (request) => {
+    const sub_issues = await listSubIssues({ issueId: request.params.issueId, userId: request.user.sub });
+    return { sub_issues };
+  });
+
+  app.get('/:issueId/relations', async (request) => {
+    const relations = await listRelations({ issueId: request.params.issueId, userId: request.user.sub });
+    return { relations };
+  });
+
+  app.post('/:issueId/relations', async (request, reply) => {
+    const body = RelationBody.parse(request.body);
+    await addRelation({
+      issueId: request.params.issueId,
+      userId: request.user.sub,
+      relatedIssueId: body.related_issue_id,
+      type: body.type,
+    });
+    reply.code(201).send({ ok: true });
+  });
+
+  app.delete('/:issueId/relations/:relationId', async (request, reply) => {
+    await removeRelation({ relationId: request.params.relationId, userId: request.user.sub });
+    reply.code(204).send();
   });
 }

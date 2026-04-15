@@ -98,6 +98,87 @@ export async function listWorkflowStatuses(teamId) {
   return rows;
 }
 
+export async function createStatus({ teamId, userId, name, color, type, position, wipLimit }) {
+  await assertTeamMember(teamId, userId);
+  const { rows: max } = await query(
+    `SELECT COALESCE(MAX(position), -1) AS m FROM workflow_statuses WHERE team_id = $1`,
+    [teamId]
+  );
+  const pos = position != null ? position : max[0].m + 1;
+  const { rows } = await query(
+    `INSERT INTO workflow_statuses (team_id, name, color, type, position, wip_limit)
+     VALUES ($1, $2, COALESCE($3, '#6B7280'), $4, $5, $6)
+     RETURNING *`,
+    [teamId, name, color, type, pos, wipLimit || null]
+  );
+  return rows[0];
+}
+
+export async function deleteStatus({ teamId, statusId, userId, reassignTo }) {
+  await assertTeamMember(teamId, userId);
+  // Ensure at least one status remains after delete
+  const { rows: counts } = await query(
+    `SELECT COUNT(*)::int AS n FROM workflow_statuses WHERE team_id = $1`,
+    [teamId]
+  );
+  if (counts[0].n <= 1) {
+    throw Object.assign(new Error('Team must have at least one status'), { statusCode: 400 });
+  }
+  return withTransaction(async (client) => {
+    if (reassignTo) {
+      await client.query(
+        `UPDATE issues SET status_id = $1 WHERE status_id = $2 AND team_id = $3`,
+        [reassignTo, statusId, teamId]
+      );
+    } else {
+      const { rows: fallback } = await client.query(
+        `SELECT id FROM workflow_statuses WHERE team_id = $1 AND id <> $2 ORDER BY position ASC LIMIT 1`,
+        [teamId, statusId]
+      );
+      if (fallback.length) {
+        await client.query(
+          `UPDATE issues SET status_id = $1 WHERE status_id = $2 AND team_id = $3`,
+          [fallback[0].id, statusId, teamId]
+        );
+      }
+    }
+    await client.query(
+      `DELETE FROM workflow_statuses WHERE id = $1 AND team_id = $2`,
+      [statusId, teamId]
+    );
+  });
+}
+
+export async function reorderStatuses({ teamId, userId, orderedIds }) {
+  await assertTeamMember(teamId, userId);
+  return withTransaction(async (client) => {
+    // Temporarily set positions high to avoid unique conflict
+    for (let i = 0; i < orderedIds.length; i++) {
+      await client.query(
+        `UPDATE workflow_statuses SET position = $1 WHERE id = $2 AND team_id = $3`,
+        [1000 + i, orderedIds[i], teamId]
+      );
+    }
+    for (let i = 0; i < orderedIds.length; i++) {
+      await client.query(
+        `UPDATE workflow_statuses SET position = $1 WHERE id = $2 AND team_id = $3`,
+        [i, orderedIds[i], teamId]
+      );
+    }
+  });
+}
+
+async function assertTeamMember(teamId, userId) {
+  const { rows } = await query(
+    `SELECT 1 FROM teams t
+     JOIN workspace_members wm
+       ON wm.workspace_id = t.workspace_id AND wm.user_id = $2 AND wm.status = 'active'
+     WHERE t.id = $1`,
+    [teamId, userId]
+  );
+  if (!rows.length) throw Object.assign(new Error('Forbidden'), { statusCode: 403 });
+}
+
 export async function listTeamMembers(teamId) {
   const { rows } = await query(
     `SELECT u.id, u.name, u.email, u.avatar_url, tm.role, tm.joined_at

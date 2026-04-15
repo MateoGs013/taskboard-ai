@@ -2,6 +2,8 @@
 import { ref } from 'vue';
 import { useIssueStore } from '@/stores/issue';
 import { useTeamStore } from '@/stores/team';
+import { useCycleStore } from '@/stores/cycle';
+import { useKeyboard } from '@/composables/useKeyboard';
 
 const props = defineProps({
   teamId: { type: String, required: true },
@@ -11,6 +13,7 @@ const emit = defineEmits(['close', 'created']);
 
 const issues = useIssueStore();
 const teams = useTeamStore();
+const cycles = useCycleStore();
 
 const title = ref('');
 const description = ref('');
@@ -18,8 +21,13 @@ const priority = ref(2);
 const type = ref('task');
 const statusId = ref(props.defaultStatusId);
 const assigneeId = ref(null);
+const cycleId = ref(cycles.active?.id || null);
 const saving = ref(false);
 const error = ref('');
+
+useKeyboard({
+  '!Escape': () => emit('close'),
+});
 
 async function submit() {
   if (!title.value.trim()) return;
@@ -34,6 +42,7 @@ async function submit() {
       type: type.value,
       status_id: statusId.value || undefined,
       assignee_id: assigneeId.value || undefined,
+      cycle_id: cycleId.value || undefined,
     });
     emit('created');
   } catch (e) {
@@ -91,13 +100,24 @@ async function submit() {
         </label>
       </div>
 
-      <label v-if="teams.members.length">
-        <span>Asignado a</span>
-        <select v-model="assigneeId">
-          <option :value="null">Sin asignar</option>
-          <option v-for="m in teams.members" :key="m.id" :value="m.id">{{ m.name }}</option>
-        </select>
-      </label>
+      <div class="row">
+        <label v-if="teams.members.length">
+          <span>Asignado a</span>
+          <select v-model="assigneeId">
+            <option :value="null">Sin asignar</option>
+            <option v-for="m in teams.members" :key="m.id" :value="m.id">{{ m.name }}</option>
+          </select>
+        </label>
+        <label v-if="cycles.list.length">
+          <span>Cycle</span>
+          <select v-model="cycleId">
+            <option :value="null">Sin cycle</option>
+            <option v-for="c in cycles.list" :key="c.id" :value="c.id">
+              #{{ c.number }} {{ c.name || '' }}
+            </option>
+          </select>
+        </label>
+      </div>
 
       <p v-if="error" class="modal__error">{{ error }}</p>
 

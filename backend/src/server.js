@@ -13,6 +13,7 @@ import teamRoutes from './modules/teams/team.routes.js';
 import projectRoutes from './modules/projects/project.routes.js';
 import labelRoutes from './modules/labels/label.routes.js';
 import issueRoutes from './modules/issues/issue.routes.js';
+import cycleRoutes from './modules/cycles/cycle.routes.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -60,6 +61,7 @@ export async function buildApp() {
   await app.register(projectRoutes, { prefix: '/api/projects' });
   await app.register(labelRoutes, { prefix: '/api/labels' });
   await app.register(issueRoutes, { prefix: '/api/issues' });
+  await app.register(cycleRoutes, { prefix: '/api/cycles' });
 
   app.setErrorHandler((err, request, reply) => {
     request.log.error(err);

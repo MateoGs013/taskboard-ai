@@ -1,14 +1,19 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
-import { RouterView, useRouter } from 'vue-router';
+import { RouterView, RouterLink, useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { useTeamStore } from '@/stores/team';
+import { useCycleStore } from '@/stores/cycle';
+import { useIssueStore } from '@/stores/issue';
+import { useKeyboard } from '@/composables/useKeyboard';
 
 const router = useRouter();
 const auth = useAuthStore();
 const ws = useWorkspaceStore();
 const teams = useTeamStore();
+const cycles = useCycleStore();
+const issues = useIssueStore();
 
 const showCreateWs = ref(false);
 const showCreateTeam = ref(false);
@@ -21,13 +26,20 @@ const ready = computed(() => !ws.loading && !teams.loading);
 async function init() {
   await ws.fetch();
   if (ws.activeId) await teams.fetch(ws.activeId);
+  if (teams.activeId) await cycles.fetch(teams.activeId);
 }
 
 onMounted(init);
 
 watch(() => ws.activeId, async (id) => {
   teams.reset();
+  cycles.reset();
   if (id) await teams.fetch(id);
+});
+
+watch(() => teams.activeId, async (id) => {
+  cycles.reset();
+  if (id) await cycles.fetch(id);
 });
 
 async function createWs() {
@@ -54,8 +66,17 @@ async function logout() {
   await auth.logout();
   ws.reset();
   teams.reset();
+  cycles.reset();
+  issues.reset();
   router.push('/login');
 }
+
+// Global shortcuts: Escape cierra modals/panels (forced), ? open shortcuts hint
+useKeyboard({
+  '!Escape': () => {
+    if (issues.selected) issues.clearSelected();
+  },
+});
 </script>
 
 <template>
@@ -89,6 +110,20 @@ async function logout() {
         <p v-else class="muted small">Creá tu primer workspace.</p>
       </section>
 
+      <!-- Top nav -->
+      <nav class="sidebar__nav" v-if="ws.activeId">
+        <RouterLink :to="{ name: 'home' }" class="nav-link">
+          <span class="nav-link__icon">◆</span> Home
+        </RouterLink>
+        <RouterLink :to="{ name: 'cycles' }" class="nav-link">
+          <span class="nav-link__icon">◎</span> Cycles
+          <span v-if="cycles.active" class="nav-link__badge">activo</span>
+        </RouterLink>
+        <RouterLink :to="{ name: 'workflow' }" class="nav-link" v-if="teams.activeId">
+          <span class="nav-link__icon">⊞</span> Workflow
+        </RouterLink>
+      </nav>
+
       <!-- Teams -->
       <section class="sidebar__section flex-grow" v-if="ws.activeId">
         <div class="sidebar__section-head">
@@ -117,6 +152,20 @@ async function logout() {
             Todavía no hay teams.
           </p>
         </nav>
+      </section>
+
+      <!-- Active cycle -->
+      <section v-if="cycles.active" class="sidebar__section active-cycle">
+        <div class="sidebar__section-head">
+          <span>Cycle activo</span>
+        </div>
+        <RouterLink :to="{ name: 'cycles' }" class="active-cycle__card">
+          <span class="mono small">#{{ cycles.active.number }}</span>
+          <strong>{{ cycles.active.name || `Cycle ${cycles.active.number}` }}</strong>
+          <span class="muted small">
+            hasta {{ cycles.active.end_date?.slice(0, 10) }}
+          </span>
+        </RouterLink>
       </section>
 
       <footer class="sidebar__footer">

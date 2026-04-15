@@ -5,6 +5,9 @@ import {
   getTeamById,
   listWorkflowStatuses,
   listTeamMembers,
+  createStatus,
+  deleteStatus,
+  reorderStatuses,
 } from './team.service.js';
 import { requireAuth } from '../../middleware/auth.js';
 
@@ -19,6 +22,18 @@ const UpdateStatusBody = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   position: z.number().int().min(0).optional(),
   wip_limit: z.number().int().min(0).nullable().optional(),
+});
+
+const CreateStatusBody = z.object({
+  name: z.string().min(1).max(40),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  type: z.enum(['backlog', 'unstarted', 'started', 'completed', 'cancelled']),
+  position: z.number().int().min(0).optional(),
+  wip_limit: z.number().int().min(0).nullable().optional(),
+});
+
+const ReorderBody = z.object({
+  ordered_ids: z.array(z.string().uuid()).min(1),
 });
 
 export default async function teamRoutes(app) {
@@ -64,6 +79,40 @@ export default async function teamRoutes(app) {
     );
     if (rows.length === 0) return reply.code(404).send({ error: 'Status not found' });
     return { status: rows[0] };
+  });
+
+  app.post('/:teamId/statuses', async (request, reply) => {
+    const body = CreateStatusBody.parse(request.body);
+    const status = await createStatus({
+      teamId: request.params.teamId,
+      userId: request.user.sub,
+      name: body.name,
+      color: body.color,
+      type: body.type,
+      position: body.position,
+      wipLimit: body.wip_limit,
+    });
+    reply.code(201).send({ status });
+  });
+
+  app.delete('/:teamId/statuses/:statusId', async (request, reply) => {
+    await deleteStatus({
+      teamId: request.params.teamId,
+      statusId: request.params.statusId,
+      userId: request.user.sub,
+      reassignTo: request.query?.reassign_to || null,
+    });
+    reply.code(204).send();
+  });
+
+  app.post('/:teamId/statuses/reorder', async (request, reply) => {
+    const body = ReorderBody.parse(request.body);
+    await reorderStatuses({
+      teamId: request.params.teamId,
+      userId: request.user.sub,
+      orderedIds: body.ordered_ids,
+    });
+    reply.code(204).send();
   });
 
   app.get('/:teamId/members', async (request) => {

@@ -8,6 +8,8 @@ export const useIssueStore = defineStore('issue', {
     loading: false,
     selected: null,
     comments: [],
+    subIssues: [],
+    relations: [],
   }),
   getters: {
     all: (s) => Array.from(s.byId.values()),
@@ -70,13 +72,17 @@ export const useIssueStore = defineStore('issue', {
       return issue;
     },
     async select(issueId) {
-      if (!issueId) { this.selected = null; this.comments = []; return; }
-      const [{ issue }, { comments }] = await Promise.all([
+      if (!issueId) { this.clearSelected(); return; }
+      const [{ issue }, { comments }, { sub_issues }, { relations }] = await Promise.all([
         api(`/issues/${issueId}`),
         api(`/issues/${issueId}/comments`),
+        api(`/issues/${issueId}/sub-issues`),
+        api(`/issues/${issueId}/relations`),
       ]);
       this.selected = issue;
       this.comments = comments;
+      this.subIssues = sub_issues;
+      this.relations = relations;
     },
     async addComment(issueId, body) {
       const { comment } = await api(`/issues/${issueId}/comments`, { method: 'POST', body: { body } });
@@ -88,9 +94,33 @@ export const useIssueStore = defineStore('issue', {
       this._upsert(issue);
       if (this.selected?.id === issueId) this.selected = issue;
     },
+    async createSubIssue(parentId, title) {
+      if (!this.teamId) return;
+      const { issue } = await api('/issues', {
+        method: 'POST',
+        body: { team_id: this.teamId, title, parent_id: parentId },
+      });
+      this._upsert(issue);
+      this.subIssues = [...this.subIssues, issue];
+      return issue;
+    },
+    async addRelation(issueId, relatedIssueId, type) {
+      await api(`/issues/${issueId}/relations`, {
+        method: 'POST',
+        body: { related_issue_id: relatedIssueId, type },
+      });
+      const { relations } = await api(`/issues/${issueId}/relations`);
+      this.relations = relations;
+    },
+    async removeRelation(issueId, relationId) {
+      await api(`/issues/${issueId}/relations/${relationId}`, { method: 'DELETE' });
+      this.relations = this.relations.filter((r) => r.id !== relationId);
+    },
     clearSelected() {
       this.selected = null;
       this.comments = [];
+      this.subIssues = [];
+      this.relations = [];
     },
     reset() {
       this.byId = new Map();
