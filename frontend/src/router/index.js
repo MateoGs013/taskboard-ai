@@ -30,7 +30,15 @@ const routes = [
       { path: 'dashboard', name: 'dashboard', component: () => import('@/views/dashboard/DashboardView.vue') },
       { path: 'my', name: 'my-issues', component: () => import('@/views/my/MyIssuesView.vue') },
       { path: 'calendar', name: 'calendar', component: () => import('@/views/calendar/CalendarView.vue') },
+      { path: 'activity', name: 'activity', component: () => import('@/views/activity/ActivityView.vue') },
+      { path: 'settings', name: 'settings', component: () => import('@/views/settings/SettingsView.vue') },
     ],
+  },
+  {
+    path: '/invite/:token',
+    name: 'invite',
+    component: () => import('@/views/invite/InviteAccept.vue'),
+    meta: { public: true },
   },
   {
     path: '/:pathMatch(.*)*',

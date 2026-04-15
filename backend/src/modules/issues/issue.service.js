@@ -2,6 +2,7 @@ import { query, withTransaction } from '../../config/db.js';
 import { rankBetween } from '../../utils/lexorank.js';
 import { notify } from '../notifications/notification.service.js';
 import { emitIssueEvent, emitToUser } from './issue.events.js';
+import { dispatch as dispatchWebhook } from '../webhooks/webhook.service.js';
 
 async function workspaceIdForTeam(teamId) {
   const { rows } = await query(`SELECT workspace_id FROM teams WHERE id = $1`, [teamId]);
@@ -201,6 +202,11 @@ export async function createIssue({ teamId, userId, payload }) {
     const fresh = finalRows[0];
     const wsId = await workspaceIdForTeam(teamId);
     emitIssueEvent({ event: 'issue.created', workspaceId: wsId, issueId, payload: { issue: fresh } });
+    dispatchWebhook({ workspaceId: wsId, event: 'issue.created', payload: { issue: fresh } });
+    await client.query(
+      `UPDATE activity_log SET workspace_id = $1 WHERE issue_id = $2 AND workspace_id IS NULL`,
+      [wsId, issueId]
+    );
     return fresh;
   });
 }
@@ -244,6 +250,7 @@ export async function updateIssue({ issueId, userId, patch }) {
 
   const updated = await getIssue({ issueId, userId });
   emitIssueEvent({ event: 'issue.updated', workspaceId: wsId, issueId, payload: { issue: updated } });
+  dispatchWebhook({ workspaceId: wsId, event: 'issue.updated', payload: { issue: updated, patch } });
   return updated;
 }
 
@@ -300,6 +307,7 @@ export async function moveIssue({ issueId, userId, statusId, beforeId, afterId }
     const moved = await getIssue({ issueId, userId });
     const wsId = await workspaceIdForTeam(existing.team_id);
     emitIssueEvent({ event: 'issue.moved', workspaceId: wsId, issueId, payload: { issue: moved, actor_id: userId } });
+    dispatchWebhook({ workspaceId: wsId, event: 'issue.moved', payload: { issue: moved } });
     return moved;
   });
 }
@@ -387,6 +395,7 @@ export async function createComment({ issueId, userId, body, parentId }) {
     }).catch(() => {});
   }
   emitIssueEvent({ event: 'comment.created', workspaceId: wsId, issueId, payload: { comment } });
+  dispatchWebhook({ workspaceId: wsId, event: 'comment.created', payload: { comment, issue_id: issueId } });
   return comment;
 }
 

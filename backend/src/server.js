@@ -22,6 +22,9 @@ import searchRoutes from './modules/search/search.routes.js';
 import notificationRoutes from './modules/notifications/notification.routes.js';
 import attachmentRoutes from './modules/attachments/attachment.routes.js';
 import exportRoutes from './modules/exports/export.routes.js';
+import activityRoutes from './modules/activity/activity.routes.js';
+import webhookRoutes from './modules/webhooks/webhook.routes.js';
+import memberRoutes from './modules/workspaces/member.routes.js';
 import { bindRealtime as bindIssueRealtime } from './modules/issues/issue.events.js';
 import { bindRealtime as bindNotifRealtime } from './modules/notifications/notification.service.js';
 
@@ -85,6 +88,9 @@ export async function buildApp() {
   await app.register(notificationRoutes, { prefix: '/api/notifications' });
   await app.register(attachmentRoutes, { prefix: '/api/attachments' });
   await app.register(exportRoutes, { prefix: '/api/export' });
+  await app.register(activityRoutes, { prefix: '/api/activity' });
+  await app.register(webhookRoutes, { prefix: '/api/webhooks' });
+  await app.register(memberRoutes, { prefix: '/api/workspaces' });
 
   app.setErrorHandler((err, request, reply) => {
     request.log.error(err);
