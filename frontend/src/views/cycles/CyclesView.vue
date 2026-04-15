@@ -2,11 +2,15 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useTeamStore } from '@/stores/team';
 import { useCycleStore } from '@/stores/cycle';
+import { useAiStore } from '@/stores/ai';
+import SprintPlannerModal from '@/components/ai/SprintPlannerModal.vue';
 
 const teams = useTeamStore();
 const cycles = useCycleStore();
+const ai = useAiStore();
 
 const showForm = ref(false);
+const planningCycleId = ref(null);
 const name = ref('');
 const startDate = ref('');
 const endDate = ref('');
@@ -128,10 +132,25 @@ function progressPct(c) {
           <footer class="row">
             <button v-if="c.status === 'upcoming'" class="btn-ghost" @click="cycles.start(c.id)">Iniciar</button>
             <button v-if="c.status === 'active'" class="btn-ghost" @click="cycles.complete(c.id)">Completar</button>
+            <button
+              v-if="ai.online && c.status !== 'completed'"
+              class="ai-mini"
+              @click="planningCycleId = c.id"
+              title="Planificar con IA"
+            >
+              ✦ Planificar
+            </button>
             <button v-if="c.status !== 'active'" class="link danger" @click="cycles.remove(c.id)">Borrar</button>
           </footer>
         </li>
       </ul>
     </section>
+
+    <SprintPlannerModal
+      v-if="planningCycleId"
+      :cycle-id="planningCycleId"
+      @close="planningCycleId = null"
+      @assigned="planningCycleId = null"
+    />
   </section>
 </template>

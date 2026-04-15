@@ -48,6 +48,45 @@ npm run db:migrate
 npm run dev
 ```
 
+## IA local (Ollama + Qwen 3.5)
+
+La capa de IA es **opcional** — si Ollama no está corriendo, la app funciona normalmente y los botones de IA quedan ocultos.
+
+```bash
+# 1. Instalar Ollama (https://ollama.com/download)
+
+# 2. Descargar modelos
+ollama pull qwen3.5:9b      # 6.6 GB — modelo principal (rápido)
+ollama pull qwen3.5:27b     # 17 GB  — opcional (planning, generate)
+
+# 3. Verificar
+curl http://localhost:11434/api/tags
+
+# 4. Warmup del modelo principal
+curl http://localhost:11434/api/generate -d '{
+  "model": "qwen3.5:9b",
+  "keep_alive": "24h",
+  "prompt": "warmup"
+}'
+```
+
+Override de modelos en `backend/.env`:
+```
+OLLAMA_HOST=http://127.0.0.1:11434
+OLLAMA_MODEL_QUICK=qwen3.5:9b      # enhance, suggest, duplicates, chat
+OLLAMA_MODEL_STANDARD=qwen3.5:27b  # generate-tasks, sprint-plan
+```
+
+**Features de IA disponibles:**
+- ✦ Generar issues desde un objetivo en lenguaje natural (sidebar)
+- ✦ Mejorar descripciones de issue inline
+- ✦ Sugerir prioridad basada en título + descripción
+- ✦ Detectar duplicados al crear (próximamente surface en UI)
+- ✦ Planificar cycle priorizando backlog y respetando capacidad
+- ✦ Chat contextual con streaming SSE (atajo `G`)
+
+Todo persistido en `ai_action_logs` (auditable) y `ai_conversations`.
+
 ## Roadmap
 
 Plan completo en `docs/ULTRAPLAN-TaskBoard-AI.md`.

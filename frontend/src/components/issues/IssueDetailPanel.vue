@@ -2,10 +2,15 @@
 import { computed, ref, watch } from 'vue';
 import { useIssueStore } from '@/stores/issue';
 import { useTeamStore } from '@/stores/team';
+import { useAiStore } from '@/stores/ai';
+import { useWorkspaceStore } from '@/stores/workspace';
 
 const emit = defineEmits(['close']);
 const issues = useIssueStore();
 const teams = useTeamStore();
+const ai = useAiStore();
+const ws = useWorkspaceStore();
+const aiBusy = ref(false);
 
 const editingTitle = ref(false);
 const titleDraft = ref('');
@@ -52,6 +57,23 @@ async function saveDesc() {
     await issues.update(issue.value.id, { description: descDraft.value });
   }
   editingDesc.value = false;
+}
+
+async function aiEnhanceDesc() {
+  if (aiBusy.value) return;
+  aiBusy.value = true;
+  try {
+    const data = await ai.enhanceDescription({
+      workspaceId: ws.activeId,
+      teamId: teams.activeId,
+      title: issue.value.title,
+      description: issue.value.description || '',
+    });
+    descDraft.value = data.description;
+    editingDesc.value = true;
+  } finally {
+    aiBusy.value = false;
+  }
 }
 
 async function changeStatus(e) {
@@ -162,6 +184,15 @@ async function postComment() {
       <section class="detail-panel__desc">
         <h3>Descripción</h3>
         <button v-if="!editingDesc" class="link" @click="editingDesc = true">Editar</button>
+        <button
+          v-if="ai.online && !editingDesc"
+          class="ai-mini"
+          :disabled="aiBusy"
+          @click="aiEnhanceDesc"
+          title="Mejorar con IA"
+        >
+          ✦ {{ aiBusy ? '…' : 'Mejorar' }}
+        </button>
         <p v-if="!editingDesc && issue.description">{{ issue.description }}</p>
         <p v-else-if="!editingDesc" class="muted small">Sin descripción.</p>
         <textarea

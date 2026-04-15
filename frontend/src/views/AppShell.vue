@@ -6,7 +6,10 @@ import { useWorkspaceStore } from '@/stores/workspace';
 import { useTeamStore } from '@/stores/team';
 import { useCycleStore } from '@/stores/cycle';
 import { useIssueStore } from '@/stores/issue';
+import { useAiStore } from '@/stores/ai';
 import { useKeyboard } from '@/composables/useKeyboard';
+import AiChatPanel from '@/components/ai/AiChatPanel.vue';
+import AiGenerateModal from '@/components/ai/AiGenerateModal.vue';
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -14,6 +17,9 @@ const ws = useWorkspaceStore();
 const teams = useTeamStore();
 const cycles = useCycleStore();
 const issues = useIssueStore();
+const ai = useAiStore();
+
+const showGenerate = ref(false);
 
 const showCreateWs = ref(false);
 const showCreateTeam = ref(false);
@@ -27,6 +33,7 @@ async function init() {
   await ws.fetch();
   if (ws.activeId) await teams.fetch(ws.activeId);
   if (teams.activeId) await cycles.fetch(teams.activeId);
+  ai.fetchStatus();
 }
 
 onMounted(init);
@@ -71,11 +78,12 @@ async function logout() {
   router.push('/login');
 }
 
-// Global shortcuts: Escape cierra modals/panels (forced), ? open shortcuts hint
+// Global shortcuts: Escape cierra modals/panels (forced), G open chat
 useKeyboard({
   '!Escape': () => {
     if (issues.selected) issues.clearSelected();
   },
+  g: () => { if (ai.online) ai.openChat(); },
 });
 </script>
 
@@ -168,6 +176,26 @@ useKeyboard({
         </RouterLink>
       </section>
 
+      <!-- AI status + actions -->
+      <section class="sidebar__section">
+        <div class="ai-status" :class="{ 'ai-status--online': ai.online, 'ai-status--offline': !ai.online }">
+          <span class="ai-status__dot"></span>
+          <span class="ai-status__label">
+            <template v-if="ai.online">IA online</template>
+            <template v-else>IA offline</template>
+          </span>
+          <button class="link" @click="ai.fetchStatus(true)" :disabled="ai.statusChecking">↻</button>
+        </div>
+        <div v-if="ai.online" class="ai-actions">
+          <button class="ai-cta" @click="showGenerate = true" v-if="teams.activeId">
+            ✦ Generar issues
+          </button>
+          <button class="ai-cta ai-cta--ghost" @click="ai.openChat()">
+            ✦ Asistente <kbd>G</kbd>
+          </button>
+        </div>
+      </section>
+
       <footer class="sidebar__footer">
         <div class="user">
           <span class="user__avatar">{{ auth.user?.name?.[0] ?? '?' }}</span>
@@ -184,5 +212,12 @@ useKeyboard({
       <RouterView v-if="ready" />
       <div v-else class="loading">Cargando…</div>
     </main>
+
+    <AiChatPanel v-if="ai.chatOpen" />
+    <AiGenerateModal
+      v-if="showGenerate"
+      @close="showGenerate = false"
+      @created="(n) => { showGenerate = false; if (teams.activeId) issues.fetch(teams.activeId); }"
+    />
   </div>
 </template>

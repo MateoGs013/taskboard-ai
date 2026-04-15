@@ -3,6 +3,8 @@ import { ref } from 'vue';
 import { useIssueStore } from '@/stores/issue';
 import { useTeamStore } from '@/stores/team';
 import { useCycleStore } from '@/stores/cycle';
+import { useAiStore } from '@/stores/ai';
+import { useWorkspaceStore } from '@/stores/workspace';
 import { useKeyboard } from '@/composables/useKeyboard';
 
 const props = defineProps({
@@ -14,6 +16,11 @@ const emit = defineEmits(['close', 'created']);
 const issues = useIssueStore();
 const teams = useTeamStore();
 const cycles = useCycleStore();
+const ai = useAiStore();
+const ws = useWorkspaceStore();
+
+const aiBusy = ref(false);
+const aiPriorityHint = ref(null);
 
 const title = ref('');
 const description = ref('');
@@ -28,6 +35,43 @@ const error = ref('');
 useKeyboard({
   '!Escape': () => emit('close'),
 });
+
+async function aiEnhance() {
+  if (!title.value.trim() || aiBusy.value) return;
+  aiBusy.value = true;
+  try {
+    const data = await ai.enhanceDescription({
+      workspaceId: ws.activeId,
+      teamId: props.teamId,
+      title: title.value.trim(),
+      description: description.value,
+    });
+    description.value = data.description;
+  } catch (e) {
+    error.value = e.message || 'No se pudo mejorar';
+  } finally {
+    aiBusy.value = false;
+  }
+}
+
+async function aiSuggestPriority() {
+  if (!title.value.trim() || aiBusy.value) return;
+  aiBusy.value = true;
+  try {
+    const data = await ai.suggestPriority({
+      workspaceId: ws.activeId,
+      teamId: props.teamId,
+      title: title.value.trim(),
+      description: description.value,
+    });
+    priority.value = data.priority;
+    aiPriorityHint.value = data.reasoning;
+  } catch (e) {
+    error.value = e.message || 'No se pudo sugerir';
+  } finally {
+    aiBusy.value = false;
+  }
+}
 
 async function submit() {
   if (!title.value.trim()) return;
@@ -67,8 +111,20 @@ async function submit() {
       </label>
 
       <label>
-        <span>Descripción</span>
-        <textarea v-model="description" rows="4" maxlength="10000" />
+        <span class="label-with-action">
+          Descripción
+          <button
+            type="button"
+            class="ai-mini"
+            v-if="ai.online && title.trim()"
+            :disabled="aiBusy"
+            @click="aiEnhance"
+            title="Mejorar con IA"
+          >
+            ✦ {{ aiBusy ? '…' : 'Mejorar' }}
+          </button>
+        </span>
+        <textarea v-model="description" rows="5" maxlength="10000" />
       </label>
 
       <div class="row">
@@ -80,7 +136,19 @@ async function submit() {
           </select>
         </label>
         <label>
-          <span>Prioridad</span>
+          <span class="label-with-action">
+            Prioridad
+            <button
+              type="button"
+              class="ai-mini"
+              v-if="ai.online && title.trim()"
+              :disabled="aiBusy"
+              @click="aiSuggestPriority"
+              title="Sugerir prioridad"
+            >
+              ✦ Sugerir
+            </button>
+          </span>
           <select v-model.number="priority">
             <option :value="0">Urgent</option>
             <option :value="1">High</option>
@@ -88,6 +156,7 @@ async function submit() {
             <option :value="3">Low</option>
             <option :value="4">None</option>
           </select>
+          <small v-if="aiPriorityHint" class="ai-hint">{{ aiPriorityHint }}</small>
         </label>
         <label>
           <span>Tipo</span>
