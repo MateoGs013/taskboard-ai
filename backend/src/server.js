@@ -15,6 +15,9 @@ import labelRoutes from './modules/labels/label.routes.js';
 import issueRoutes from './modules/issues/issue.routes.js';
 import cycleRoutes from './modules/cycles/cycle.routes.js';
 import aiRoutes from './modules/ai/ai.routes.js';
+import analyticsRoutes from './modules/analytics/analytics.routes.js';
+import searchRoutes from './modules/search/search.routes.js';
+import notificationRoutes from './modules/notifications/notification.routes.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -64,6 +67,9 @@ export async function buildApp() {
   await app.register(issueRoutes, { prefix: '/api/issues' });
   await app.register(cycleRoutes, { prefix: '/api/cycles' });
   await app.register(aiRoutes, { prefix: '/api/ai' });
+  await app.register(analyticsRoutes, { prefix: '/api/analytics' });
+  await app.register(searchRoutes, { prefix: '/api/search' });
+  await app.register(notificationRoutes, { prefix: '/api/notifications' });
 
   app.setErrorHandler((err, request, reply) => {
     request.log.error(err);

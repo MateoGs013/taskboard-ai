@@ -7,9 +7,14 @@ import { useTeamStore } from '@/stores/team';
 import { useCycleStore } from '@/stores/cycle';
 import { useIssueStore } from '@/stores/issue';
 import { useAiStore } from '@/stores/ai';
+import { useNotificationStore } from '@/stores/notification';
+import { useSearchStore } from '@/stores/search';
 import { useKeyboard } from '@/composables/useKeyboard';
 import AiChatPanel from '@/components/ai/AiChatPanel.vue';
 import AiGenerateModal from '@/components/ai/AiGenerateModal.vue';
+import NotificationsBell from '@/components/notifications/NotificationsBell.vue';
+import CommandPalette from '@/components/command/CommandPalette.vue';
+import IssueDetailPanel from '@/components/issues/IssueDetailPanel.vue';
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -18,6 +23,8 @@ const teams = useTeamStore();
 const cycles = useCycleStore();
 const issues = useIssueStore();
 const ai = useAiStore();
+const notif = useNotificationStore();
+const search = useSearchStore();
 
 const showGenerate = ref(false);
 
@@ -34,6 +41,8 @@ async function init() {
   if (ws.activeId) await teams.fetch(ws.activeId);
   if (teams.activeId) await cycles.fetch(teams.activeId);
   ai.fetchStatus();
+  notif.fetchUnreadCount();
+  notif.startPolling(60_000);
 }
 
 onMounted(init);
@@ -71,19 +80,15 @@ async function createTeam() {
 
 async function logout() {
   await auth.logout();
-  ws.reset();
-  teams.reset();
-  cycles.reset();
-  issues.reset();
+  ws.reset(); teams.reset(); cycles.reset(); issues.reset(); ai.reset(); notif.reset();
   router.push('/login');
 }
 
-// Global shortcuts: Escape cierra modals/panels (forced), G open chat
+// Global shortcuts
 useKeyboard({
-  '!Escape': () => {
-    if (issues.selected) issues.clearSelected();
-  },
+  '!Escape': () => { if (issues.selected) issues.clearSelected(); },
   g: () => { if (ai.online) ai.openChat(); },
+  '!mod+k': (e) => { e.preventDefault(); search.openPalette(); },
 });
 </script>
 
@@ -123,13 +128,26 @@ useKeyboard({
         <RouterLink :to="{ name: 'home' }" class="nav-link">
           <span class="nav-link__icon">◆</span> Home
         </RouterLink>
+        <RouterLink :to="{ name: 'my-issues' }" class="nav-link">
+          <span class="nav-link__icon">◇</span> Mis issues
+        </RouterLink>
+        <RouterLink :to="{ name: 'dashboard' }" class="nav-link" v-if="teams.activeId">
+          <span class="nav-link__icon">▦</span> Dashboard
+        </RouterLink>
         <RouterLink :to="{ name: 'cycles' }" class="nav-link">
           <span class="nav-link__icon">◎</span> Cycles
           <span v-if="cycles.active" class="nav-link__badge">activo</span>
         </RouterLink>
+        <RouterLink :to="{ name: 'calendar' }" class="nav-link" v-if="teams.activeId">
+          <span class="nav-link__icon">▤</span> Calendario
+        </RouterLink>
         <RouterLink :to="{ name: 'workflow' }" class="nav-link" v-if="teams.activeId">
           <span class="nav-link__icon">⊞</span> Workflow
         </RouterLink>
+        <button class="nav-link nav-link--button" @click="search.openPalette()">
+          <span class="nav-link__icon">⌕</span> Buscar
+          <kbd class="nav-link__kbd">⌘K</kbd>
+        </button>
       </nav>
 
       <!-- Teams -->
@@ -204,6 +222,7 @@ useKeyboard({
             <div class="user__email">{{ auth.user?.email }}</div>
           </div>
         </div>
+        <NotificationsBell />
         <button class="link" @click="logout">Salir</button>
       </footer>
     </aside>
@@ -219,5 +238,7 @@ useKeyboard({
       @close="showGenerate = false"
       @created="(n) => { showGenerate = false; if (teams.activeId) issues.fetch(teams.activeId); }"
     />
+    <CommandPalette />
+    <IssueDetailPanel v-if="issues.selected" @close="issues.clearSelected()" />
   </div>
 </template>

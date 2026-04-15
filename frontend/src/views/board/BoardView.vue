@@ -7,7 +7,6 @@ import { useIssueStore } from '@/stores/issue';
 import { useCycleStore } from '@/stores/cycle';
 import { useKeyboard } from '@/composables/useKeyboard';
 import IssueCard from '@/components/issues/IssueCard.vue';
-import IssueDetailPanel from '@/components/issues/IssueDetailPanel.vue';
 import CreateIssueModal from '@/components/issues/CreateIssueModal.vue';
 
 const route = useRoute();
@@ -176,6 +175,5 @@ async function onDragEnd(evt, targetStatusId) {
       @created="showCreate = false"
     />
 
-    <IssueDetailPanel v-if="issues.selected" @close="issues.clearSelected()" />
   </section>
 </template>

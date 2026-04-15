@@ -1,5 +1,11 @@
 import { query, withTransaction } from '../../config/db.js';
 import { rankBetween } from '../../utils/lexorank.js';
+import { notify } from '../notifications/notification.service.js';
+
+async function workspaceIdForTeam(teamId) {
+  const { rows } = await query(`SELECT workspace_id FROM teams WHERE id = $1`, [teamId]);
+  return rows[0]?.workspace_id;
+}
 
 const SELECT_ISSUE = `
   i.id, i.team_id, i.project_id, i.parent_id, i.cycle_id, i.status_id,
@@ -170,6 +176,19 @@ export async function createIssue({ teamId, userId, payload }) {
       [issueId, userId, JSON.stringify({ identifier })]
     );
 
+    if (payload.assignee_id) {
+      const wsId = await workspaceIdForTeam(teamId);
+      await notify({
+        userId: payload.assignee_id,
+        workspaceId: wsId,
+        issueId,
+        actorId: userId,
+        type: 'assigned',
+        title: `Te asignaron ${identifier}`,
+        body: payload.title,
+      }).catch(() => {});
+    }
+
     // Re-read with joins
     const { rows: finalRows } = await client.query(
       `SELECT ${SELECT_ISSUE}
@@ -204,6 +223,20 @@ export async function updateIssue({ issueId, userId, patch }) {
      VALUES ($1, $2, 'updated', $3::jsonb)`,
     [issueId, userId, JSON.stringify(patch)]
   );
+
+  // Notify newly assigned user
+  if ('assignee_id' in patch && patch.assignee_id && patch.assignee_id !== existing.assignee_id) {
+    const wsId = await workspaceIdForTeam(existing.team_id);
+    await notify({
+      userId: patch.assignee_id,
+      workspaceId: wsId,
+      issueId,
+      actorId: userId,
+      type: 'assigned',
+      title: `Te asignaron ${existing.identifier}`,
+      body: existing.title,
+    }).catch(() => {});
+  }
 
   return getIssue({ issueId, userId });
 }
@@ -296,6 +329,19 @@ export async function createComment({ issueId, userId, body, parentId }) {
      VALUES ($1, $2, $3, $4) RETURNING *`,
     [issueId, userId, parentId || null, body]
   );
+
+  if (issue.assignee_id) {
+    const wsId = await workspaceIdForTeam(issue.team_id);
+    await notify({
+      userId: issue.assignee_id,
+      workspaceId: wsId,
+      issueId,
+      actorId: userId,
+      type: 'commented',
+      title: `Nuevo comentario en ${issue.identifier}`,
+      body: body.slice(0, 140),
+    }).catch(() => {});
+  }
   return rows[0];
 }
 
