@@ -45,11 +45,18 @@ export async function markAllRead(userId) {
  * Helper to be called from issue service hooks. Skips notifications
  * to the actor itself (no self-notify).
  */
+let realtimeApp = null;
+export function bindRealtime(fastify) { realtimeApp = fastify; }
+
 export async function notify({ userId, workspaceId, issueId, actorId, type, title, body }) {
   if (userId === actorId) return;
-  await query(
+  const { rows } = await query(
     `INSERT INTO notifications (user_id, workspace_id, issue_id, actor_id, type, title, body)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING id, type, title, body, is_read, created_at, issue_id`,
     [userId, workspaceId, issueId || null, actorId || null, type, title, body || null]
   );
+  if (realtimeApp && rows[0]) {
+    realtimeApp.realtime.toUser(userId, 'notification.created', { notification: rows[0] });
+  }
 }

@@ -2,11 +2,13 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import jwt from '@fastify/jwt';
+import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import sensible from '@fastify/sensible';
 
 import { env, isDev } from './config/env.js';
 import dbPlugin from './plugins/db.js';
+import realtimePlugin from './plugins/realtime.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import workspaceRoutes from './modules/workspaces/workspace.routes.js';
 import teamRoutes from './modules/teams/team.routes.js';
@@ -18,6 +20,10 @@ import aiRoutes from './modules/ai/ai.routes.js';
 import analyticsRoutes from './modules/analytics/analytics.routes.js';
 import searchRoutes from './modules/search/search.routes.js';
 import notificationRoutes from './modules/notifications/notification.routes.js';
+import attachmentRoutes from './modules/attachments/attachment.routes.js';
+import exportRoutes from './modules/exports/export.routes.js';
+import { bindRealtime as bindIssueRealtime } from './modules/issues/issue.events.js';
+import { bindRealtime as bindNotifRealtime } from './modules/notifications/notification.service.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -38,6 +44,9 @@ export async function buildApp() {
     max: 200,
     timeWindow: '1 minute',
   });
+  await app.register(multipart, {
+    limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  });
   await app.register(jwt, {
     secret: {
       private: env.JWT_ACCESS_SECRET,
@@ -47,6 +56,10 @@ export async function buildApp() {
   });
 
   await app.register(dbPlugin);
+  await app.register(realtimePlugin);
+
+  bindIssueRealtime(app);
+  bindNotifRealtime(app);
 
   app.get('/health', async () => ({
     status: 'ok',
@@ -70,6 +83,8 @@ export async function buildApp() {
   await app.register(analyticsRoutes, { prefix: '/api/analytics' });
   await app.register(searchRoutes, { prefix: '/api/search' });
   await app.register(notificationRoutes, { prefix: '/api/notifications' });
+  await app.register(attachmentRoutes, { prefix: '/api/attachments' });
+  await app.register(exportRoutes, { prefix: '/api/export' });
 
   app.setErrorHandler((err, request, reply) => {
     request.log.error(err);

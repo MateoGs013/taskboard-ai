@@ -9,6 +9,7 @@ import { useIssueStore } from '@/stores/issue';
 import { useAiStore } from '@/stores/ai';
 import { useNotificationStore } from '@/stores/notification';
 import { useSearchStore } from '@/stores/search';
+import { useRealtimeStore } from '@/stores/realtime';
 import { useKeyboard } from '@/composables/useKeyboard';
 import AiChatPanel from '@/components/ai/AiChatPanel.vue';
 import AiGenerateModal from '@/components/ai/AiGenerateModal.vue';
@@ -25,6 +26,7 @@ const issues = useIssueStore();
 const ai = useAiStore();
 const notif = useNotificationStore();
 const search = useSearchStore();
+const realtime = useRealtimeStore();
 
 const showGenerate = ref(false);
 
@@ -38,11 +40,35 @@ const ready = computed(() => !ws.loading && !teams.loading);
 
 async function init() {
   await ws.fetch();
-  if (ws.activeId) await teams.fetch(ws.activeId);
+  if (ws.activeId) {
+    await teams.fetch(ws.activeId);
+    realtime.connect(ws.activeId);
+  }
   if (teams.activeId) await cycles.fetch(teams.activeId);
   ai.fetchStatus();
   notif.fetchUnreadCount();
   notif.startPolling(60_000);
+
+  // Wire realtime events to stores
+  realtime.on('issue.created', ({ issue }) => {
+    if (issue.team_id === teams.activeId) issues._upsert(issue);
+  });
+  realtime.on('issue.updated', ({ issue }) => {
+    if (issue.team_id === teams.activeId) issues._upsert(issue);
+    if (issues.selected?.id === issue.id) issues.selected = issue;
+  });
+  realtime.on('issue.moved', ({ issue }) => {
+    if (issue.team_id === teams.activeId) issues._upsert(issue);
+  });
+  realtime.on('comment.created', ({ issue_id, comment }) => {
+    if (issues.selected?.id === issue_id) {
+      issues.comments = [...issues.comments, comment];
+    }
+  });
+  realtime.on('notification.created', ({ notification }) => {
+    notif.list = [notification, ...notif.list];
+    if (!notification.is_read) notif.unread++;
+  });
 }
 
 onMounted(init);
@@ -50,7 +76,10 @@ onMounted(init);
 watch(() => ws.activeId, async (id) => {
   teams.reset();
   cycles.reset();
-  if (id) await teams.fetch(id);
+  if (id) {
+    await teams.fetch(id);
+    realtime.subscribeWorkspace(id);
+  }
 });
 
 watch(() => teams.activeId, async (id) => {
@@ -80,6 +109,7 @@ async function createTeam() {
 
 async function logout() {
   await auth.logout();
+  realtime.disconnect();
   ws.reset(); teams.reset(); cycles.reset(); issues.reset(); ai.reset(); notif.reset();
   router.push('/login');
 }
@@ -222,6 +252,11 @@ useKeyboard({
             <div class="user__email">{{ auth.user?.email }}</div>
           </div>
         </div>
+        <span
+          class="rt-indicator"
+          :class="{ 'rt-indicator--on': realtime.connected }"
+          :title="realtime.connected ? 'Realtime conectado' : 'Sin conexión realtime'"
+        ></span>
         <NotificationsBell />
         <button class="link" @click="logout">Salir</button>
       </footer>

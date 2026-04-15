@@ -1,6 +1,7 @@
 import { query, withTransaction } from '../../config/db.js';
 import { rankBetween } from '../../utils/lexorank.js';
 import { notify } from '../notifications/notification.service.js';
+import { emitIssueEvent, emitToUser } from './issue.events.js';
 
 async function workspaceIdForTeam(teamId) {
   const { rows } = await query(`SELECT workspace_id FROM teams WHERE id = $1`, [teamId]);
@@ -197,7 +198,10 @@ export async function createIssue({ teamId, userId, payload }) {
        GROUP BY i.id, u_assignee.id, u_reporter.id`,
       [issueId]
     );
-    return finalRows[0];
+    const fresh = finalRows[0];
+    const wsId = await workspaceIdForTeam(teamId);
+    emitIssueEvent({ event: 'issue.created', workspaceId: wsId, issueId, payload: { issue: fresh } });
+    return fresh;
   });
 }
 
@@ -224,9 +228,9 @@ export async function updateIssue({ issueId, userId, patch }) {
     [issueId, userId, JSON.stringify(patch)]
   );
 
-  // Notify newly assigned user
+  const wsId = await workspaceIdForTeam(existing.team_id);
+
   if ('assignee_id' in patch && patch.assignee_id && patch.assignee_id !== existing.assignee_id) {
-    const wsId = await workspaceIdForTeam(existing.team_id);
     await notify({
       userId: patch.assignee_id,
       workspaceId: wsId,
@@ -238,7 +242,9 @@ export async function updateIssue({ issueId, userId, patch }) {
     }).catch(() => {});
   }
 
-  return getIssue({ issueId, userId });
+  const updated = await getIssue({ issueId, userId });
+  emitIssueEvent({ event: 'issue.updated', workspaceId: wsId, issueId, payload: { issue: updated } });
+  return updated;
 }
 
 export async function moveIssue({ issueId, userId, statusId, beforeId, afterId }) {
@@ -291,7 +297,10 @@ export async function moveIssue({ issueId, userId, statusId, beforeId, afterId }
         JSON.stringify({ status_id: statusId || existing.status_id, sort_order: newRank })]
     );
 
-    return getIssue({ issueId, userId });
+    const moved = await getIssue({ issueId, userId });
+    const wsId = await workspaceIdForTeam(existing.team_id);
+    emitIssueEvent({ event: 'issue.moved', workspaceId: wsId, issueId, payload: { issue: moved, actor_id: userId } });
+    return moved;
   });
 }
 
@@ -329,9 +338,44 @@ export async function createComment({ issueId, userId, body, parentId }) {
      VALUES ($1, $2, $3, $4) RETURNING *`,
     [issueId, userId, parentId || null, body]
   );
+  const comment = rows[0];
 
-  if (issue.assignee_id) {
-    const wsId = await workspaceIdForTeam(issue.team_id);
+  // Parse @mentions — resolve names in team members
+  const wsId = await workspaceIdForTeam(issue.team_id);
+  const mentionNames = Array.from(body.matchAll(/@([a-záéíóúñ][\w.-]+)/gi)).map((m) => m[1].toLowerCase());
+  const mentionedIds = new Set();
+  if (mentionNames.length) {
+    const { rows: users } = await query(
+      `SELECT DISTINCT u.id, u.name FROM team_members tm
+       JOIN users u ON u.id = tm.user_id
+       WHERE tm.team_id = $1`,
+      [issue.team_id]
+    );
+    for (const u of users) {
+      const first = u.name?.split(' ')[0]?.toLowerCase();
+      const full = u.name?.toLowerCase().replace(/\s+/g, '');
+      if (mentionNames.some((n) => n === first || n === full)) {
+        mentionedIds.add(u.id);
+      }
+    }
+    for (const uid of mentionedIds) {
+      await query(
+        `INSERT INTO comment_mentions (comment_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [comment.id, uid]
+      );
+      await notify({
+        userId: uid,
+        workspaceId: wsId,
+        issueId,
+        actorId: userId,
+        type: 'mentioned',
+        title: `Te mencionaron en ${issue.identifier}`,
+        body: body.slice(0, 140),
+      }).catch(() => {});
+    }
+  }
+
+  if (issue.assignee_id && !mentionedIds.has(issue.assignee_id)) {
     await notify({
       userId: issue.assignee_id,
       workspaceId: wsId,
@@ -342,7 +386,8 @@ export async function createComment({ issueId, userId, body, parentId }) {
       body: body.slice(0, 140),
     }).catch(() => {});
   }
-  return rows[0];
+  emitIssueEvent({ event: 'comment.created', workspaceId: wsId, issueId, payload: { comment } });
+  return comment;
 }
 
 // ============================================================

@@ -6,6 +6,7 @@ import { useCycleStore } from '@/stores/cycle';
 import { useAiStore } from '@/stores/ai';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { useKeyboard } from '@/composables/useKeyboard';
+import RichTextEditor from '@/components/editor/RichTextEditor.vue';
 
 const props = defineProps({
   teamId: { type: String, required: true },
@@ -124,7 +125,7 @@ async function submit() {
             ✦ {{ aiBusy ? '…' : 'Mejorar' }}
           </button>
         </span>
-        <textarea v-model="description" rows="5" maxlength="10000" />
+        <RichTextEditor v-model="description" placeholder="Describí la tarea…" min-height="140px" />
       </label>
 
       <div class="row">

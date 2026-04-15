@@ -4,6 +4,8 @@ import { useIssueStore } from '@/stores/issue';
 import { useTeamStore } from '@/stores/team';
 import { useAiStore } from '@/stores/ai';
 import { useWorkspaceStore } from '@/stores/workspace';
+import RichTextEditor from '@/components/editor/RichTextEditor.vue';
+import AttachmentsPanel from '@/components/issues/AttachmentsPanel.vue';
 
 const emit = defineEmits(['close']);
 const issues = useIssueStore();
@@ -193,16 +195,15 @@ async function postComment() {
         >
           ✦ {{ aiBusy ? '…' : 'Mejorar' }}
         </button>
-        <p v-if="!editingDesc && issue.description">{{ issue.description }}</p>
+        <div v-if="!editingDesc && issue.description" class="rte-render" v-html="issue.description"></div>
         <p v-else-if="!editingDesc" class="muted small">Sin descripción.</p>
-        <textarea
-          v-else
-          v-model="descDraft"
-          rows="5"
-          @blur="saveDesc"
-          @keyup.escape="editingDesc = false"
-          autofocus
-        />
+        <div v-else class="rte-wrap">
+          <RichTextEditor v-model="descDraft" placeholder="Describí el trabajo…" />
+          <div class="row-end">
+            <button class="link" @click="editingDesc = false">Cancelar</button>
+            <button class="btn-primary" @click="saveDesc">Guardar</button>
+          </div>
+        </div>
       </section>
 
       <section class="detail-panel__section">
@@ -267,6 +268,8 @@ async function postComment() {
         <p v-else-if="!showRelationForm" class="muted small">Sin relaciones.</p>
       </section>
 
+      <AttachmentsPanel :issue-id="issue.id" />
+
       <section class="detail-panel__comments">
         <h3>Comentarios ({{ issues.comments.length }})</h3>
         <ul class="comment-list">
@@ -275,12 +278,12 @@ async function postComment() {
               <strong>{{ c.user_name || 'Anon' }}</strong>
               <time>{{ new Date(c.created_at).toLocaleString() }}</time>
             </header>
-            <p>{{ c.body }}</p>
+            <div class="rte-render" v-html="c.body"></div>
           </li>
         </ul>
         <form class="comment-form" @submit.prevent="postComment">
-          <textarea v-model="newComment" rows="2" placeholder="Escribí un comentario…" />
-          <button type="submit" :disabled="posting || !newComment.trim()">
+          <RichTextEditor v-model="newComment" placeholder="Escribí un comentario… usá @nombre para mencionar" min-height="80px" />
+          <button type="submit" :disabled="posting || !newComment || newComment === '<p></p>'">
             {{ posting ? 'Enviando…' : 'Publicar' }}
           </button>
         </form>
