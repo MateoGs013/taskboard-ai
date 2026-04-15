@@ -9,6 +9,10 @@ import { env, isDev } from './config/env.js';
 import dbPlugin from './plugins/db.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import workspaceRoutes from './modules/workspaces/workspace.routes.js';
+import teamRoutes from './modules/teams/team.routes.js';
+import projectRoutes from './modules/projects/project.routes.js';
+import labelRoutes from './modules/labels/label.routes.js';
+import issueRoutes from './modules/issues/issue.routes.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -52,6 +56,10 @@ export async function buildApp() {
 
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(workspaceRoutes, { prefix: '/api/workspaces' });
+  await app.register(teamRoutes, { prefix: '/api/teams' });
+  await app.register(projectRoutes, { prefix: '/api/projects' });
+  await app.register(labelRoutes, { prefix: '/api/labels' });
+  await app.register(issueRoutes, { prefix: '/api/issues' });
 
   app.setErrorHandler((err, request, reply) => {
     request.log.error(err);

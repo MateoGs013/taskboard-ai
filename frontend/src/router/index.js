@@ -4,7 +4,7 @@ import { useAuthStore } from '@/stores/auth';
 const routes = [
   {
     path: '/',
-    redirect: () => (localStorage.getItem('tb.access_token') ? '/board' : '/login'),
+    redirect: () => (localStorage.getItem('tb.access_token') ? '/app' : '/login'),
   },
   {
     path: '/login',
@@ -19,9 +19,13 @@ const routes = [
     meta: { public: true },
   },
   {
-    path: '/board',
-    name: 'board',
-    component: () => import('@/views/board/BoardView.vue'),
+    path: '/app',
+    component: () => import('@/views/AppShell.vue'),
+    children: [
+      { path: '', name: 'home', component: () => import('@/views/HomeView.vue') },
+      { path: 'board', name: 'board', component: () => import('@/views/board/BoardView.vue') },
+      { path: 'board/:teamId', name: 'board-team', component: () => import('@/views/board/BoardView.vue') },
+    ],
   },
   {
     path: '/:pathMatch(.*)*',
@@ -44,6 +48,6 @@ router.beforeEach(async (to) => {
     return { name: 'login', query: { redirect: to.fullPath } };
   }
   if (to.meta.public && auth.isAuthenticated && ['login', 'register'].includes(to.name)) {
-    return { name: 'board' };
+    return { name: 'home' };
   }
 });
